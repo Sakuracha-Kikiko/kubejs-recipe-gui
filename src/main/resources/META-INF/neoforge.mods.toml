@@ -1,0 +1,33 @@
+modLoader = "javafml"
+loaderVersion = "[4,)"
+license = "MIT"
+
+[[mods]]
+modId = "kubejs_recipe_gui"
+version = "0.1.0"
+displayName = "KubeJS Recipe GUI"
+authors = "Sakuracha Kikiko"
+description = '''
+在游戏内编辑 KubeJS 配方：摆放原料与产出，生成脚本并写入 kubejs/server_scripts。
+'''
+
+[[dependencies.kubejs_recipe_gui]]
+modId = "neoforge"
+type = "required"
+versionRange = "[21.1.216,)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.kubejs_recipe_gui]]
+modId = "minecraft"
+type = "required"
+versionRange = "[1.21.1,1.22)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.kubejs_recipe_gui]]
+modId = "kubejs"
+type = "required"
+versionRange = "[2101.7,)"
+ordering = "AFTER"
+side = "BOTH"

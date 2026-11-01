@@ -1,0 +1,7 @@
+{
+  "variants": {
+    "": {
+      "model": "kubejs_recipe_gui:block/recipe_editor"
+    }
+  }
+}

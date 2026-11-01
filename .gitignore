@@ -22,3 +22,12 @@
 # virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
 hs_err_pid*
 replay_pid*
+
+# Gradle / 构建产物
+build/
+.gradle/
+!gradle/wrapper/gradle-wrapper.jar
+
+# 开发运行目录（世界、日志、放进 run/mods 的前置）
+run/
+dev-libs/
