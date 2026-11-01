@@ -34,6 +34,7 @@
   "gui.kubejs_recipe_gui.label.empty_slot": "Empty",
 
   "gui.kubejs_recipe_gui.button.write": "Write script",
+  "gui.kubejs_recipe_gui.button.reload": "Reload",
   "gui.kubejs_recipe_gui.button.select_item": "Pick item",
   "gui.kubejs_recipe_gui.button.clear": "Clear",
   "gui.kubejs_recipe_gui.button.shaped": "Shaped",
@@ -72,9 +73,11 @@
   "gui.kubejs_recipe_gui.error.too_large": "Recipe is too large",
 
   "gui.kubejs_recipe_gui.msg.no_permission": "Only the host or an operator can write recipes",
-  "gui.kubejs_recipe_gui.msg.written": "Recipe %s written to %s",
-  "gui.kubejs_recipe_gui.msg.replaced": "Recipe %s replaced in %s",
+  "gui.kubejs_recipe_gui.msg.written": "Recipe %s written to %s (click Reload to apply)",
+  "gui.kubejs_recipe_gui.msg.replaced": "Recipe %s replaced in %s (click Reload to apply)",
   "gui.kubejs_recipe_gui.msg.skipped": "Recipe %s already exists, skipped",
   "gui.kubejs_recipe_gui.msg.failed": "Could not write recipe: %s",
-  "gui.kubejs_recipe_gui.msg.invalid": "Recipe is invalid: %s"
+  "gui.kubejs_recipe_gui.msg.invalid": "Recipe is invalid: %s",
+  "gui.kubejs_recipe_gui.msg.reloading": "Reload request sent",
+  "gui.kubejs_recipe_gui.msg.reloaded": "Recipes reloaded"
 }

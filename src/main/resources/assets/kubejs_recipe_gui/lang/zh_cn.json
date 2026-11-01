@@ -34,6 +34,7 @@
   "gui.kubejs_recipe_gui.label.empty_slot": "空",
 
   "gui.kubejs_recipe_gui.button.write": "写入脚本",
+  "gui.kubejs_recipe_gui.button.reload": "重载",
   "gui.kubejs_recipe_gui.button.select_item": "选择物品",
   "gui.kubejs_recipe_gui.button.clear": "清空",
   "gui.kubejs_recipe_gui.button.shaped": "有序",
@@ -72,10 +73,12 @@
   "gui.kubejs_recipe_gui.error.too_large": "配方内容过大",
 
   "gui.kubejs_recipe_gui.msg.no_permission": "只有房主或管理员可以写入配方",
-  "gui.kubejs_recipe_gui.msg.written": "配方 %s 已写入 %s",
-  "gui.kubejs_recipe_gui.msg.replaced": "配方 %s 已在 %s 中替换",
+  "gui.kubejs_recipe_gui.msg.written": "配方 %s 已写入 %s（点『重载』生效）",
+  "gui.kubejs_recipe_gui.msg.replaced": "配方 %s 已在 %s 中替换（点『重载』生效）",
   "gui.kubejs_recipe_gui.msg.skipped": "配方 %s 已存在，已跳过",
   "gui.kubejs_recipe_gui.msg.failed": "写入配方失败：%s",
   "gui.kubejs_recipe_gui.msg.invalid": "配方无效：%s",
-  "gui.kubejs_recipe_gui.msg.sent": "已发送写入请求：%s"
+  "gui.kubejs_recipe_gui.msg.sent": "已发送写入请求：%s",
+  "gui.kubejs_recipe_gui.msg.reloading": "已发送重载请求",
+  "gui.kubejs_recipe_gui.msg.reloaded": "配方已重载"
 }

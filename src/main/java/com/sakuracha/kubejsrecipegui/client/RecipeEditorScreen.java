@@ -2,6 +2,7 @@ package com.sakuracha.kubejsrecipegui.client;
 
 import com.sakuracha.kubejsrecipegui.codegen.RecipeCode;
 import com.sakuracha.kubejsrecipegui.menu.RecipeEditorMenu;
+import com.sakuracha.kubejsrecipegui.network.ReloadScriptsPayload;
 import com.sakuracha.kubejsrecipegui.network.WriteRequest;
 import com.sakuracha.kubejsrecipegui.network.WriteScriptPayload;
 import com.sakuracha.kubejsrecipegui.server.ScriptStore;
@@ -31,20 +32,26 @@ import net.neoforged.neoforge.network.PacketDistributor;
 /**
  * 配方编辑界面：左栏选工作站，中栏摆原料与产出，右栏三个标签页负责属性、生成与预览。
  *
- * <p>界面使用原版控件（{@link EditBox}）与自绘区域组合，不依赖任何第三方 UI 库。</p>
+ * <p>界面尺寸按原版 GUI 缩放设计：整块面板 470×250，在 GUI 缩放 3（640×360）下约占屏幕四分之三，
+ * 缩放 4（480×270）也能完整显示；屏幕更小时按比例整体收缩。</p>
  */
 public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu> {
-    private static final int WIDTH = 600;
-    private static final int HEIGHT = 340;
+    private static final int W = 470;
+    private static final int H = 250;
 
-    private static final int LEFT_X = 6;
-    private static final int LEFT_W = 150;
-    private static final int MID_X = 162;
-    private static final int MID_W = 258;
-    private static final int RIGHT_X = 426;
-    private static final int RIGHT_W = 168;
-    private static final int PANEL_TOP = 24;
-    private static final int SLOT = 32;
+    private static final int HEADER_H = 18;
+    private static final int BODY_TOP = 22;
+    private static final int BODY_BOTTOM = H - 6;
+
+    private static final int LEFT_X = 5;
+    private static final int LEFT_W = 104;
+    private static final int MID_X = 114;
+    private static final int MID_W = 196;
+    private static final int RIGHT_X = 315;
+    private static final int RIGHT_W = 150;
+
+    private static final int SLOT = 28;
+    private static final int FIELD_W = RIGHT_W - 12;
 
     private static final int COLOR_BG = 0xFF14161B;
     private static final int COLOR_PANEL = 0xFF1C1F26;
@@ -63,9 +70,9 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
     private static final int TAB_PREVIEW = 2;
 
     private static final int PICKER_W = 300;
-    private static final int PICKER_H = 216;
+    private static final int PICKER_H = 210;
     private static final int PICKER_COLUMNS = 10;
-    private static final int PICKER_ROWS = 6;
+    private static final int PICKER_ROWS = 5;
     private static final int PICKER_CELL = 28;
     private static final int PICKER_PAGE = PICKER_COLUMNS * PICKER_ROWS;
     private static final int PICKER_LIMIT = 4096;
@@ -95,14 +102,18 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
     private EditBox deleteValueBox;
     private EditBox pickerSearch;
 
+    private float zoom = 1.0F;
+    private int originX;
+    private int originY;
+
     private String statusKey;
     private Object[] statusArgs = new Object[0];
     private boolean statusGood;
 
     public RecipeEditorScreen(RecipeEditorMenu menu, Inventory inventory, Component title) {
         super(menu, inventory, title);
-        this.imageWidth = WIDTH;
-        this.imageHeight = HEIGHT;
+        this.imageWidth = W;
+        this.imageHeight = H;
     }
 
     @Override
@@ -110,30 +121,48 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         super.init();
         this.boxes.clear();
 
-        this.countBox = this.createBox(56, 2, this::onCountChanged,
+        this.countBox = this.createBox(40, 2, this::onCountChanged,
                 value -> value.isEmpty() || value.chars().allMatch(Character::isDigit));
-        this.experienceBox = this.createBox(56, 8, this::onExperienceChanged,
+        this.experienceBox = this.createBox(40, 8, this::onExperienceChanged,
                 value -> value.isEmpty() || value.chars().allMatch(c -> Character.isDigit(c) || c == '.'));
-        this.timeBox = this.createBox(56, 5, this::onTimeChanged,
+        this.timeBox = this.createBox(40, 5, this::onTimeChanged,
                 value -> value.isEmpty() || value.chars().allMatch(Character::isDigit));
-        this.itemBox = this.createBox(152, 128, this::onItemChanged, null);
-        this.tagBox = this.createBox(152, 128, this::onTagChanged, null);
-        this.componentsBox = this.createBox(152, 512, this::onComponentsChanged, null);
-        this.idBox = this.createBox(152, 128, value -> this.draft.recipeId = value, null);
-        this.deleteValueBox = this.createBox(152, 128, value -> this.draft.deleteValue = value, null);
+        this.itemBox = this.createBox(FIELD_W, 128, this::onItemChanged, null);
+        this.tagBox = this.createBox(FIELD_W, 128, this::onTagChanged, null);
+        this.componentsBox = this.createBox(FIELD_W, 512, this::onComponentsChanged, null);
+        this.idBox = this.createBox(FIELD_W, 128, value -> this.draft.recipeId = value, null);
+        this.deleteValueBox = this.createBox(FIELD_W, 128, value -> this.draft.deleteValue = value, null);
         this.pickerSearch = this.createBox(PICKER_W - 12, 64, this::onPickerQueryChanged, null);
 
         this.layout();
     }
 
+    /** 面板在小屏幕上整体收缩，避免 GUI 缩放偏大时看不全。 */
+    private void updateGeometry() {
+        float fitX = (this.width - 6) / (float) W;
+        float fitY = (this.height - 6) / (float) H;
+        float nextZoom = Math.min(1.0F, Math.min(fitX, fitY));
+        int nextX = Math.round((this.width - W * nextZoom) / 2.0F);
+        int nextY = Math.round((this.height - H * nextZoom) / 2.0F);
+        boolean changed = nextZoom != this.zoom || nextX != this.originX || nextY != this.originY;
+        this.zoom = nextZoom;
+        this.originX = nextX;
+        this.originY = nextY;
+        if (changed && this.countBox != null) {
+            this.layout();
+        }
+    }
+
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+        this.updateGeometry();
         this.renderBackground(graphics, mouseX, mouseY, partialTick);
-        int localX = mouseX - this.leftPos;
-        int localY = mouseY - this.topPos;
+        int localX = this.toLocalX(mouseX);
+        int localY = this.toLocalY(mouseY);
 
         graphics.pose().pushPose();
-        graphics.pose().translate(this.leftPos, this.topPos, 0.0F);
+        graphics.pose().translate(this.originX, this.originY, 0.0F);
+        graphics.pose().scale(this.zoom, this.zoom, 1.0F);
         this.drawChrome(graphics);
         this.drawStationColumn(graphics, localX, localY);
         this.drawRecipeArea(graphics, localX, localY);
@@ -165,7 +194,7 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
     // ------------------------------------------------------------------
 
     private EditBox createBox(int width, int maxLength, Consumer<String> responder, Predicate<String> filter) {
-        EditBox box = new EditBox(this.font, 0, 0, width, 14, Component.empty());
+        EditBox box = new EditBox(this.font, 0, 0, width, 12, Component.empty());
         box.setMaxLength(maxLength);
         if (filter != null) {
             box.setFilter(filter);
@@ -186,8 +215,7 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         if (this.countBox == null) {
             return;
         }
-        int rx = this.leftPos + RIGHT_X;
-        int ry = this.topPos;
+        this.updateGeometry();
         boolean properties = this.tab == TAB_PROPERTIES;
         boolean generate = this.tab == TAB_GENERATE;
         boolean outputSelected = this.selected < 0;
@@ -199,26 +227,26 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         }
 
         if (this.pickerOpen) {
-            this.place(this.pickerSearch, this.leftPos + this.pickerX() + 6, this.topPos + this.pickerY() + 6,
-                    PICKER_W - 12);
+            this.place(this.pickerSearch, this.pickerX() + 6, this.pickerY() + 30, PICKER_W - 12);
             this.visible(this.pickerSearch, true);
             this.setFocused(this.pickerSearch);
             return;
         }
 
-        this.place(this.countBox, rx + 96, ry + 44, 56);
-        this.place(this.experienceBox, rx + 96, ry + 64, 56);
-        this.place(this.timeBox, rx + 96, ry + 84, 56);
-        this.place(this.itemBox, rx + 8, ry + 118, 152);
-        this.place(this.tagBox, rx + 8, ry + 150, 152);
-        this.place(this.componentsBox, rx + 8, ry + 182, 152);
-        this.place(this.idBox, rx + 8, ry + 66, 152);
-        this.place(this.deleteValueBox, rx + 8, ry + 170, 152);
+        int rx = RIGHT_X + 6;
+        this.place(this.countBox, RIGHT_X + RIGHT_W - 6 - 44, 38, 44);
+        this.place(this.experienceBox, RIGHT_X + RIGHT_W - 6 - 44, 56, 44);
+        this.place(this.timeBox, RIGHT_X + RIGHT_W - 6 - 44, 74, 44);
+        this.place(this.itemBox, rx, 108, FIELD_W);
+        this.place(this.tagBox, rx, 142, FIELD_W);
+        this.place(this.componentsBox, rx, 142, FIELD_W);
+        this.place(this.idBox, rx, 48, FIELD_W);
+        this.place(this.deleteValueBox, rx, 166, FIELD_W);
 
         if (properties) {
             this.visible(this.countBox, outputSelected);
-            this.visible(this.experienceBox, cooking);
-            this.visible(this.timeBox, cooking);
+            this.visible(this.experienceBox, cooking && outputSelected);
+            this.visible(this.timeBox, cooking && outputSelected);
             this.visible(this.itemBox, true);
             this.visible(this.tagBox, !outputSelected);
             this.visible(this.componentsBox, outputSelected);
@@ -237,10 +265,11 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         this.setValue(this.deleteValueBox, this.draft.deleteValue);
     }
 
-    private void place(EditBox box, int x, int y, int width) {
-        box.setX(x);
-        box.setY(y);
-        box.setWidth(width);
+    private void place(EditBox box, int logicalX, int logicalY, int logicalWidth) {
+        box.setX(Math.round(this.originX + logicalX * this.zoom));
+        box.setY(Math.round(this.originY + logicalY * this.zoom));
+        box.setWidth(Math.max(20, Math.round(logicalWidth * this.zoom)));
+        box.setHeight(Math.max(10, Math.round(12 * this.zoom)));
     }
 
     private void visible(EditBox box, boolean visible) {
@@ -313,8 +342,8 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
             return true;
         }
 
-        int localX = (int) (mouseX - this.leftPos);
-        int localY = (int) (mouseY - this.topPos);
+        int localX = this.toLocalX(mouseX);
+        int localY = this.toLocalY(mouseY);
 
         if (this.pickerOpen) {
             if (this.handlePickerClick(localX, localY, button)) {
@@ -326,27 +355,25 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
 
         this.setFocused((GuiEventListener) null);
 
-        for (int index = 0; index < 3; index++) {
-            if (inside(RIGHT_X + index * 56, PANEL_TOP, 54, 16, localX, localY)) {
-                this.tab = index;
-                this.layout();
-                return true;
-            }
+        if (this.tabHit(localX, localY) >= 0) {
+            this.tab = this.tabHit(localX, localY);
+            this.layout();
+            return true;
         }
 
         Workstation[] stations = Workstation.values();
         for (int index = 0; index < stations.length; index++) {
-            if (inside(LEFT_X + 4, this.stationY(index), LEFT_W - 8, 22, localX, localY)) {
+            if (inside(LEFT_X + 4, this.stationY(index), LEFT_W - 8, 20, localX, localY)) {
                 this.selectStation(stations[index]);
                 return true;
             }
         }
 
-        if (this.draft.station.isCrafting() && inside(MID_X + 6, PANEL_TOP + 6, 76, 16, localX, localY)) {
+        if (this.draft.station.isCrafting() && inside(MID_X + 8, BODY_TOP + 2, 62, 14, localX, localY)) {
             this.draft.shapeless = false;
             return true;
         }
-        if (this.draft.station.isCrafting() && inside(MID_X + 86, PANEL_TOP + 6, 76, 16, localX, localY)) {
+        if (this.draft.station.isCrafting() && inside(MID_X + 74, BODY_TOP + 2, 62, 14, localX, localY)) {
             this.draft.shapeless = true;
             return true;
         }
@@ -363,32 +390,36 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         }
 
         if (this.tab == TAB_PROPERTIES) {
-            if (inside(RIGHT_X + 8, 226, RIGHT_W - 16, 16, localX, localY)) {
-                this.openPicker(this.selected < 0 ? -1 : this.selected);
+            if (inside(RIGHT_X + 6, 186, FIELD_W, 16, localX, localY)) {
+                this.openPicker(this.selected);
                 return true;
             }
-            if (inside(RIGHT_X + 8, 246, RIGHT_W - 16, 16, localX, localY)) {
+            if (inside(RIGHT_X + 6, 206, FIELD_W, 16, localX, localY)) {
                 this.clearSelected();
                 return true;
             }
         }
 
         if (this.tab == TAB_GENERATE) {
-            if (inside(RIGHT_X + 8, 100, 74, 16, localX, localY)) {
+            if (inside(RIGHT_X + 6, 98, 66, 16, localX, localY)) {
                 this.draft.writeMode = WriteMode.REPLACE;
                 return true;
             }
-            if (inside(RIGHT_X + 86, 100, 74, 16, localX, localY)) {
+            if (inside(RIGHT_X + 78, 98, 66, 16, localX, localY)) {
                 this.draft.writeMode = WriteMode.SKIP;
                 return true;
             }
-            if (inside(RIGHT_X + 8, 140, RIGHT_W - 16, 16, localX, localY)) {
+            if (inside(RIGHT_X + 6, 132, FIELD_W, 16, localX, localY)) {
                 this.draft.deleteMode = this.draft.deleteMode.next();
                 this.layout();
                 return true;
             }
-            if (inside(RIGHT_X + 8, HEIGHT - 34, RIGHT_W - 16, 20, localX, localY)) {
+            if (inside(RIGHT_X + 6, 204, 92, 18, localX, localY)) {
                 this.writeScript();
+                return true;
+            }
+            if (inside(RIGHT_X + 102, 204, 42, 18, localX, localY)) {
+                this.reloadScripts();
                 return true;
             }
         }
@@ -417,8 +448,29 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        if (keyCode == 256 && this.pickerOpen) {
+        if (this.pickerOpen && keyCode == 256) {
             this.closePicker();
+            return true;
+        }
+
+        // 正在输入时把按键全部留在输入框里：ESC 先退出输入，其余键（含 E）交给输入框，
+        // 返回 false 让字符继续走 charTyped 插入，同时避免父类把 E 当成"关闭界面"。
+        if (this.getFocused() instanceof EditBox box && box.isFocused() && box.visible) {
+            if (keyCode == 256) {
+                this.setFocused((GuiEventListener) null);
+                return true;
+            }
+            if (box.keyPressed(keyCode, scanCode, modifiers)) {
+                return true;
+            }
+            return false;
+        }
+
+        // 没有在输入时，吞掉背包键，避免误触关闭界面；退出统一用 ESC。
+        if (keyCode == 256) {
+            return super.keyPressed(keyCode, scanCode, modifiers);
+        }
+        if (this.minecraft != null && this.minecraft.options.keyInventory.matches(keyCode, scanCode)) {
             return true;
         }
         return super.keyPressed(keyCode, scanCode, modifiers);
@@ -438,6 +490,15 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
             }
         }
         return false;
+    }
+
+    private int tabHit(int localX, int localY) {
+        for (int index = 0; index < 3; index++) {
+            if (inside(RIGHT_X + index * 48, BODY_TOP, 46, 14, localX, localY)) {
+                return index;
+            }
+        }
+        return -1;
     }
 
     private void clickSlot(int index, int button) {
@@ -491,11 +552,11 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
     // ------------------------------------------------------------------
 
     private int pickerX() {
-        return (WIDTH - PICKER_W) / 2;
+        return (W - PICKER_W) / 2;
     }
 
     private int pickerY() {
-        return (HEIGHT - PICKER_H) / 2;
+        return (H - PICKER_H) / 2;
     }
 
     private void openPicker(int target) {
@@ -548,8 +609,8 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         if (!inside(this.pickerX(), this.pickerY(), PICKER_W, PICKER_H, localX, localY)) {
             return false;
         }
-        int gridX = this.pickerX() + 10;
-        int gridY = this.pickerY() + 36;
+        int gridX = this.pickerX() + 8;
+        int gridY = this.pickerY() + 44;
         for (int row = 0; row < PICKER_ROWS; row++) {
             for (int column = 0; column < PICKER_COLUMNS; column++) {
                 int index = this.pickerPage * PICKER_PAGE + row * PICKER_COLUMNS + column;
@@ -586,27 +647,28 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
     // ------------------------------------------------------------------
 
     private void drawChrome(GuiGraphics graphics) {
-        graphics.fill(0, 0, WIDTH, HEIGHT, COLOR_BG);
-        graphics.renderOutline(0, 0, WIDTH, HEIGHT, COLOR_LINE);
-        graphics.fill(0, 0, WIDTH, 20, COLOR_PANEL_ALT);
-        graphics.fill(0, 19, WIDTH, 20, COLOR_LINE);
-        graphics.drawString(this.font, this.title, 8, 6, COLOR_TEXT, false);
+        graphics.fill(0, 0, W, H, COLOR_BG);
+        graphics.renderOutline(0, 0, W, H, COLOR_LINE);
+        graphics.fill(0, 0, W, HEADER_H, COLOR_PANEL_ALT);
+        graphics.fill(0, HEADER_H - 1, W, HEADER_H, COLOR_LINE);
+        graphics.drawString(this.font, this.title, 6, 5, COLOR_TEXT, false);
 
         List<RecipeCode.Problem> problems = RecipeCode.validate(this.draft);
         String hint = problems.isEmpty()
                 ? Component.translatable("gui.kubejs_recipe_gui.label.empty_slot").getString()
                 : Component.translatable(problems.get(0).key(), problems.get(0).args()).getString();
         int color = problems.isEmpty() ? COLOR_MUTED : COLOR_BAD;
-        graphics.drawString(this.font, hint, WIDTH - 8 - this.font.width(hint), 6, color, false);
+        graphics.drawString(this.font, this.font.plainSubstrByWidth(hint, 240),
+                W - 6 - this.font.width(this.font.plainSubstrByWidth(hint, 240)), 5, color, false);
     }
 
     private int stationY(int index) {
-        return PANEL_TOP + 20 + index * 26;
+        return BODY_TOP + 12 + index * 24;
     }
 
     private void drawStationColumn(GuiGraphics graphics, int mouseX, int mouseY) {
-        panel(graphics, LEFT_X, PANEL_TOP, LEFT_W, HEIGHT - PANEL_TOP - 6);
-        label(graphics, "gui.kubejs_recipe_gui.label.station", LEFT_X + 6, PANEL_TOP + 5);
+        panel(graphics, LEFT_X, BODY_TOP, LEFT_W, BODY_BOTTOM - BODY_TOP);
+        label(graphics, "gui.kubejs_recipe_gui.label.station", LEFT_X + 5, BODY_TOP + 4);
 
         Workstation[] stations = Workstation.values();
         for (int index = 0; index < stations.length; index++) {
@@ -614,22 +676,22 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
             int x = LEFT_X + 4;
             int y = this.stationY(index);
             boolean active = this.draft.station == station;
-            boolean hovered = inside(x, y, LEFT_W - 8, 22, mouseX, mouseY);
-            graphics.fill(x, y, x + LEFT_W - 8, y + 22, active ? COLOR_PANEL_ALT : COLOR_PANEL);
-            graphics.renderOutline(x, y, LEFT_W - 8, 22, active ? COLOR_ACCENT : (hovered ? COLOR_LINE : COLOR_LINE_SOFT));
-            graphics.drawString(this.font, Component.translatable(station.langKey()), x + 6, y + 7,
+            boolean hovered = inside(x, y, LEFT_W - 8, 20, mouseX, mouseY);
+            graphics.fill(x, y, x + LEFT_W - 8, y + 20, active ? COLOR_PANEL_ALT : COLOR_PANEL);
+            graphics.renderOutline(x, y, LEFT_W - 8, 20, active ? COLOR_ACCENT : (hovered ? COLOR_LINE : COLOR_LINE_SOFT));
+            graphics.drawString(this.font, Component.translatable(station.langKey()), x + 5, y + 6,
                     active ? COLOR_TEXT : COLOR_MUTED, false);
         }
     }
 
     private void drawRecipeArea(GuiGraphics graphics, int mouseX, int mouseY) {
-        panel(graphics, MID_X, PANEL_TOP, MID_W, HEIGHT - PANEL_TOP - 6);
+        panel(graphics, MID_X, BODY_TOP, MID_W, BODY_BOTTOM - BODY_TOP);
         Workstation station = this.draft.station;
 
         if (station.isCrafting()) {
-            modeButton(graphics, MID_X + 6, PANEL_TOP + 6, 76, "gui.kubejs_recipe_gui.button.shaped",
+            modeButton(graphics, MID_X + 8, BODY_TOP + 2, 62, "gui.kubejs_recipe_gui.button.shaped",
                     !this.draft.shapeless, mouseX, mouseY);
-            modeButton(graphics, MID_X + 86, PANEL_TOP + 6, 76, "gui.kubejs_recipe_gui.button.shapeless",
+            modeButton(graphics, MID_X + 74, BODY_TOP + 2, 62, "gui.kubejs_recipe_gui.button.shapeless",
                     this.draft.shapeless, mouseX, mouseY);
         } else if (station.isSmithing()) {
             label(graphics, "gui.kubejs_recipe_gui.label.template", this.slotX(0), this.slotY(0) - 10);
@@ -641,14 +703,10 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
 
         for (int index = 0; index < station.slotCount(); index++) {
             IngredientSpec spec = this.draft.input(index);
-            int x = this.slotX(index);
-            int y = this.slotY(index);
-            this.drawSlot(graphics, x, y, mouseX, mouseY, this.selected == index, spec);
+            this.drawSlot(graphics, this.slotX(index), this.slotY(index), mouseX, mouseY, this.selected == index, spec);
         }
 
-        int arrowX = station.isCrafting() ? MID_X + 118 : MID_X + 136;
-        int arrowY = station.isCrafting() ? this.outputY() + 10 : this.outputY() + 10;
-        graphics.drawString(this.font, ">", arrowX, arrowY, COLOR_MUTED, false);
+        graphics.drawString(this.font, ">", this.outputX() - 12, this.outputY() + 10, COLOR_MUTED, false);
 
         int outX = this.outputX();
         int outY = this.outputY();
@@ -660,12 +718,13 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         if (!output.isEmpty()) {
             ItemStack shown = output.copy();
             shown.setCount(Math.max(1, this.draft.output.count));
-            graphics.renderItem(shown, outX + 8, outY + 8);
-            graphics.renderItemDecorations(this.font, shown, outX + 8, outY + 8);
+            graphics.renderItem(shown, outX + 6, outY + 6);
+            graphics.renderItemDecorations(this.font, shown, outX + 6, outY + 6);
         }
 
-        String slotHint = Component.translatable("gui.kubejs_recipe_gui.hint.slot").getString();
-        graphics.drawString(this.font, slotHint, MID_X + 6, HEIGHT - 26, COLOR_MUTED, false);
+        String slotHint = this.font.plainSubstrByWidth(
+                Component.translatable("gui.kubejs_recipe_gui.hint.slot").getString(), MID_W - 10);
+        graphics.drawString(this.font, slotHint, MID_X + 5, H - 15, COLOR_MUTED, false);
     }
 
     private void drawSlot(GuiGraphics graphics, int x, int y, int mouseX, int mouseY,
@@ -676,17 +735,17 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
 
         if (spec.isTag()) {
             String tag = "#" + shortId(spec.tagId);
-            graphics.drawString(this.font, tag, x + 2, y + 12, COLOR_ACCENT, false);
+            graphics.drawString(this.font, tag, x + 1, y + 10, COLOR_ACCENT, false);
             return;
         }
         ItemStack stack = ItemIndex.stack(spec.itemId);
         if (!stack.isEmpty()) {
-            graphics.renderItem(stack, x + 8, y + 8);
+            graphics.renderItem(stack, x + 6, y + 6);
         }
     }
 
     private void drawSidePanel(GuiGraphics graphics, int mouseX, int mouseY) {
-        panel(graphics, RIGHT_X, PANEL_TOP, RIGHT_W, HEIGHT - PANEL_TOP - 6);
+        panel(graphics, RIGHT_X, BODY_TOP, RIGHT_W, BODY_BOTTOM - BODY_TOP);
 
         String[] tabs = {
                 "gui.kubejs_recipe_gui.tab.properties",
@@ -694,13 +753,13 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
                 "gui.kubejs_recipe_gui.tab.preview"
         };
         for (int index = 0; index < tabs.length; index++) {
-            int x = RIGHT_X + index * 56;
+            int x = RIGHT_X + index * 48;
             boolean active = this.tab == index;
-            boolean hovered = inside(x, PANEL_TOP, 54, 16, mouseX, mouseY);
-            graphics.fill(x, PANEL_TOP, x + 54, PANEL_TOP + 16, active ? COLOR_PANEL_ALT : COLOR_PANEL);
-            graphics.renderOutline(x, PANEL_TOP, 54, 16, active ? COLOR_ACCENT : (hovered ? COLOR_LINE : COLOR_LINE_SOFT));
+            boolean hovered = inside(x, BODY_TOP, 46, 14, mouseX, mouseY);
+            graphics.fill(x, BODY_TOP, x + 46, BODY_TOP + 14, active ? COLOR_PANEL_ALT : COLOR_PANEL);
+            graphics.renderOutline(x, BODY_TOP, 46, 14, active ? COLOR_ACCENT : (hovered ? COLOR_LINE : COLOR_LINE_SOFT));
             String text = Component.translatable(tabs[index]).getString();
-            graphics.drawString(this.font, text, x + (54 - this.font.width(text)) / 2, PANEL_TOP + 4,
+            graphics.drawString(this.font, text, x + (46 - this.font.width(text)) / 2, BODY_TOP + 3,
                     active ? COLOR_TEXT : COLOR_MUTED, false);
         }
 
@@ -717,67 +776,68 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         boolean outputSelected = this.selected < 0;
         boolean cooking = this.draft.station.isCooking();
 
-        label(graphics, "gui.kubejs_recipe_gui.label.count", RIGHT_X + 8, 44);
-        label(graphics, "gui.kubejs_recipe_gui.label.experience", RIGHT_X + 8, 64);
-        label(graphics, "gui.kubejs_recipe_gui.label.time", RIGHT_X + 8, 84);
+        label(graphics, "gui.kubejs_recipe_gui.label.count", RIGHT_X + 6, 41);
+        label(graphics, "gui.kubejs_recipe_gui.label.experience", RIGHT_X + 6, 59);
+        label(graphics, "gui.kubejs_recipe_gui.label.time", RIGHT_X + 6, 77);
         if (!cooking) {
-            graphics.drawString(this.font, "-", RIGHT_X + 100, 68, COLOR_MUTED, false);
-            graphics.drawString(this.font, "-", RIGHT_X + 100, 88, COLOR_MUTED, false);
+            graphics.drawString(this.font, "-", RIGHT_X + RIGHT_W - 24, 59, COLOR_MUTED, false);
+            graphics.drawString(this.font, "-", RIGHT_X + RIGHT_W - 24, 77, COLOR_MUTED, false);
+        } else if (!outputSelected) {
+            graphics.drawString(this.font, "-", RIGHT_X + RIGHT_W - 24, 41, COLOR_MUTED, false);
         }
 
         label(graphics, outputSelected ? "gui.kubejs_recipe_gui.label.item" : "gui.kubejs_recipe_gui.label.ingredient",
-                RIGHT_X + 8, 106);
+                RIGHT_X + 6, 97);
         if (!outputSelected) {
-            label(graphics, "gui.kubejs_recipe_gui.label.tag", RIGHT_X + 8, 138);
+            label(graphics, "gui.kubejs_recipe_gui.label.tag", RIGHT_X + 6, 131);
         } else {
-            label(graphics, "gui.kubejs_recipe_gui.label.components", RIGHT_X + 8, 170);
+            label(graphics, "gui.kubejs_recipe_gui.label.components", RIGHT_X + 6, 131);
         }
 
-        String hint = Component.translatable("gui.kubejs_recipe_gui.hint.slot").getString();
-        graphics.drawString(this.font, hint, RIGHT_X + 8, 206, COLOR_MUTED, false);
-
-        this.drawButton(graphics, RIGHT_X + 8, 226, RIGHT_W - 16, 16,
+        this.drawButton(graphics, RIGHT_X + 6, 186, FIELD_W, 16,
                 Component.translatable("gui.kubejs_recipe_gui.button.select_item"), mouseX, mouseY);
-        this.drawButton(graphics, RIGHT_X + 8, 246, RIGHT_W - 16, 16,
+        this.drawButton(graphics, RIGHT_X + 6, 206, FIELD_W, 16,
                 Component.translatable("gui.kubejs_recipe_gui.button.clear"), mouseX, mouseY);
     }
 
     private void drawGenerate(GuiGraphics graphics, int mouseX, int mouseY) {
-        label(graphics, "gui.kubejs_recipe_gui.label.recipe_id", RIGHT_X + 8, 50);
+        label(graphics, "gui.kubejs_recipe_gui.label.recipe_id", RIGHT_X + 6, 37);
         graphics.drawString(this.font, Component.translatable("gui.kubejs_recipe_gui.hint.recipe_id").getString(),
-                RIGHT_X + 8, 84, COLOR_MUTED, false);
+                RIGHT_X + 6, 66, COLOR_MUTED, false);
 
-        label(graphics, "gui.kubejs_recipe_gui.label.write_mode", RIGHT_X + 8, 92);
-        this.drawButton(graphics, RIGHT_X + 8, 104, 74, 16,
+        label(graphics, "gui.kubejs_recipe_gui.label.write_mode", RIGHT_X + 6, 85);
+        this.drawButton(graphics, RIGHT_X + 6, 98, 66, 16,
                 Component.translatable("gui.kubejs_recipe_gui.button.overwrite"), mouseX, mouseY,
                 this.draft.writeMode == WriteMode.REPLACE);
-        this.drawButton(graphics, RIGHT_X + 86, 104, 74, 16,
+        this.drawButton(graphics, RIGHT_X + 78, 98, 66, 16,
                 Component.translatable("gui.kubejs_recipe_gui.button.skip"), mouseX, mouseY,
                 this.draft.writeMode == WriteMode.SKIP);
 
-        label(graphics, "gui.kubejs_recipe_gui.label.delete", RIGHT_X + 8, 130);
-        this.drawButton(graphics, RIGHT_X + 8, 142, RIGHT_W - 16, 16,
+        label(graphics, "gui.kubejs_recipe_gui.label.delete", RIGHT_X + 6, 121);
+        this.drawButton(graphics, RIGHT_X + 6, 132, FIELD_W, 16,
                 Component.translatable(this.draft.deleteMode.langKey()), mouseX, mouseY);
 
         if (this.draft.deleteMode.needsValue()) {
-            label(graphics, "gui.kubejs_recipe_gui.label.delete_value", RIGHT_X + 8, 162);
+            label(graphics, "gui.kubejs_recipe_gui.label.delete_value", RIGHT_X + 6, 155);
         }
 
         if (this.statusKey != null) {
             String text = Component.translatable(this.statusKey, this.statusArgs).getString();
-            graphics.drawString(this.font, this.font.plainSubstrByWidth(text, RIGHT_W - 16),
-                    RIGHT_X + 8, 200, this.statusGood ? COLOR_GOOD : COLOR_BAD, false);
+            graphics.drawString(this.font, this.font.plainSubstrByWidth(text, RIGHT_W - 12),
+                    RIGHT_X + 6, 188, this.statusGood ? COLOR_GOOD : COLOR_BAD, false);
         }
 
-        this.drawButton(graphics, RIGHT_X + 8, HEIGHT - 34, RIGHT_W - 16, 20,
+        this.drawButton(graphics, RIGHT_X + 6, 204, 92, 18,
                 Component.translatable("gui.kubejs_recipe_gui.button.write"), mouseX, mouseY);
+        this.drawButton(graphics, RIGHT_X + 102, 204, 42, 18,
+                Component.translatable("gui.kubejs_recipe_gui.button.reload"), mouseX, mouseY);
     }
 
     private void drawPreview(GuiGraphics graphics) {
         int x = RIGHT_X + 6;
-        int y = PANEL_TOP + 22;
+        int y = BODY_TOP + 20;
         int width = RIGHT_W - 12;
-        int height = HEIGHT - y - 10;
+        int height = BODY_BOTTOM - y - 4;
         graphics.fill(x, y, x + width, y + height, COLOR_SLOT);
         graphics.renderOutline(x, y, width, height, COLOR_LINE_SOFT);
 
@@ -786,12 +846,15 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         int maxLines = (height - 4) / lineHeight;
         int start = Math.min(this.previewScroll, Math.max(0, lines.length - maxLines));
 
-        graphics.enableScissor(this.leftPos + x + 1, this.topPos + y + 1,
-                this.leftPos + x + width - 1, this.topPos + y + height - 1);
+        graphics.enableScissor(
+                Math.round(this.originX + (x + 1) * this.zoom),
+                Math.round(this.originY + (y + 1) * this.zoom),
+                Math.round(this.originX + (x + width - 1) * this.zoom),
+                Math.round(this.originY + (y + height - 1) * this.zoom));
         for (int index = 0; index < maxLines && start + index < lines.length; index++) {
             String line = lines[start + index];
-            String fitted = this.font.width(line) > width - 8
-                    ? this.font.plainSubstrByWidth(line, width - 8)
+            String fitted = this.font.width(line) > width - 6
+                    ? this.font.plainSubstrByWidth(line, width - 6)
                     : line;
             graphics.drawString(this.font, fitted, x + 3, y + 3 + index * lineHeight, COLOR_TEXT, false);
         }
@@ -802,25 +865,27 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
     }
 
     private void drawPicker(GuiGraphics graphics, int mouseX, int mouseY) {
-        graphics.fill(0, 0, WIDTH, HEIGHT, 0xB0000000);
+        graphics.fill(0, 0, W, H, 0xB0000000);
         int x = this.pickerX();
         int y = this.pickerY();
         graphics.fill(x, y, x + PICKER_W, y + PICKER_H, COLOR_PANEL);
         graphics.renderOutline(x, y, PICKER_W, PICKER_H, COLOR_ACCENT);
+        graphics.drawString(this.font, Component.translatable("gui.kubejs_recipe_gui.picker.title"),
+                x + 6, y + 10, COLOR_TEXT, false);
 
         int pages = Math.max(1, (this.pickerMatches.size() + PICKER_PAGE - 1) / PICKER_PAGE);
         String page = Component.translatable("gui.kubejs_recipe_gui.picker.page",
                 String.valueOf(this.pickerPage + 1), String.valueOf(pages)).getString();
-        graphics.drawString(this.font, page, x + PICKER_W - 10 - this.font.width(page), y + 25, COLOR_MUTED, false);
+        graphics.drawString(this.font, page, x + PICKER_W - 8 - this.font.width(page), y + 10, COLOR_MUTED, false);
 
         if (this.pickerMatches.isEmpty()) {
             graphics.drawString(this.font, Component.translatable("gui.kubejs_recipe_gui.picker.empty"),
-                    x + 4, y + PICKER_H / 2, COLOR_MUTED, false);
+                    x + 6, y + PICKER_H / 2, COLOR_MUTED, false);
             return;
         }
 
-        int gridX = x + 10;
-        int gridY = y + 36;
+        int gridX = x + 8;
+        int gridY = y + 44;
         for (int row = 0; row < PICKER_ROWS; row++) {
             for (int column = 0; column < PICKER_COLUMNS; column++) {
                 int index = this.pickerPage * PICKER_PAGE + row * PICKER_COLUMNS + column;
@@ -858,7 +923,7 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
 
     private void modeButton(GuiGraphics graphics, int x, int y, int width, String key, boolean active,
                             int mouseX, int mouseY) {
-        this.drawButton(graphics, x, y, width, 16, Component.translatable(key), mouseX, mouseY, active);
+        this.drawButton(graphics, x, y, width, 14, Component.translatable(key), mouseX, mouseY, active);
     }
 
     private void panel(GuiGraphics graphics, int x, int y, int width, int height) {
@@ -877,37 +942,43 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
     private int slotX(int index) {
         Workstation station = this.draft.station;
         if (station.isCrafting()) {
-            return MID_X + 14 + (index % 3) * 34;
+            return MID_X + 14 + (index % 3) * 32;
         }
         if (station.isSmithing()) {
-            return MID_X + 8 + index * 45;
+            return MID_X + 12 + index * 40;
         }
-        return MID_X + 38;
+        return MID_X + 40;
     }
 
     private int slotY(int index) {
         Workstation station = this.draft.station;
         if (station.isCrafting()) {
-            return PANEL_TOP + 30 + (index / 3) * 34;
+            return BODY_TOP + 26 + (index / 3) * 32;
         }
         if (station.isSmithing()) {
-            return PANEL_TOP + 56;
+            return BODY_TOP + 44;
         }
-        return PANEL_TOP + 52;
+        return BODY_TOP + 36;
     }
 
     private int outputX() {
         if (this.draft.station.isCrafting()) {
-            return MID_X + 140;
+            return MID_X + 132;
         }
-        return MID_X + 168;
+        if (this.draft.station.isSmithing()) {
+            return MID_X + 148;
+        }
+        return MID_X + 132;
     }
 
     private int outputY() {
         if (this.draft.station.isCrafting()) {
-            return PANEL_TOP + 64;
+            return BODY_TOP + 58;
         }
-        return PANEL_TOP + 52;
+        if (this.draft.station.isSmithing()) {
+            return BODY_TOP + 44;
+        }
+        return BODY_TOP + 36;
     }
 
     private ItemStack hoveredStack(int mouseX, int mouseY) {
@@ -963,10 +1034,23 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         this.setStatus(true, "gui.kubejs_recipe_gui.msg.sent", id);
     }
 
+    private void reloadScripts() {
+        PacketDistributor.sendToServer(new ReloadScriptsPayload());
+        this.setStatus(true, "gui.kubejs_recipe_gui.msg.reloading");
+    }
+
     private void setStatus(boolean good, String key, Object... args) {
         this.statusGood = good;
         this.statusKey = key;
         this.statusArgs = args;
+    }
+
+    private int toLocalX(double mouseX) {
+        return (int) Math.floor((mouseX - this.originX) / this.zoom);
+    }
+
+    private int toLocalY(double mouseY) {
+        return (int) Math.floor((mouseY - this.originY) / this.zoom);
     }
 
     private static boolean inside(int x, int y, int width, int height, int mouseX, int mouseY) {

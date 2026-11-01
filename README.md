@@ -3,7 +3,8 @@
 A NeoForge mod that adds an intuitive GUI to easily edit KubeJS recipes.
 
 在游戏里放一个「配方编辑器」方块，像工作台一样摆原料、填产出，点一下就把配方写进
-`kubejs/server_scripts/generated_recipes.js` 并自动 `/reload`。不需要手写 JS，也不需要退出游戏。
+`kubejs/server_scripts/generated_recipes.js`；确认无误后点界面上的「重载」按钮即可生效。
+不需要手写 JS，也不需要退出游戏。
 
 - Minecraft 1.21.1 / NeoForge 21.1.216+ / Java 21
 - 前置：KubeJS 2101.7+（JEI 可选，用于以后的配方导入）
@@ -22,7 +23,12 @@ M1 已验证：
   `Loaded script server_scripts:generated_recipes.js ... with 0 errors` 与
   `Added 4 recipes, removed 0 recipes ... with 0 failed recipes`。
 
-界面交互、物品选择浮层等还需要在客户端里手动过一遍。
+2026-11-01 界面调整（根据实机反馈）：
+
+- 面板从 600×340 缩小到 470×250，GUI 缩放 3 下不再占满屏幕，缩放 4 也能完整显示；
+  更小的屏幕会整体等比收缩；
+- 输入框获得焦点时按 E 只输入字符，不再关闭界面（退出统一用 ESC）；
+- 写入脚本后不再自动 `/reload`，改由「重载」按钮手动触发，避免写完立刻重载造成的卡顿与误操作。
 
 ## 构建
 

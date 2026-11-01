@@ -1,6 +1,7 @@
 package com.sakuracha.kubejsrecipegui.server;
 
 import com.sakuracha.kubejsrecipegui.codegen.RecipeCode;
+import com.sakuracha.kubejsrecipegui.network.ReloadScriptsPayload;
 import com.sakuracha.kubejsrecipegui.network.WriteRequest;
 import com.sakuracha.kubejsrecipegui.network.WriteScriptPayload;
 import com.sakuracha.kubejsrecipegui.spec.DeleteMode;
@@ -20,9 +21,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * 服务端写入流程：校验权限 → 重新拼装脚本文本 → 合并进目标文件 → 触发 {@code /reload}。
+ * 服务端写入流程：校验权限 → 重新拼装脚本文本 → 合并进目标文件。
  *
- * <p>客户端只提供结构化数据，服务端不信任客户端给出的任何文本，避免把任意内容写进脚本目录。</p>
+ * <p>客户端只提供结构化数据，服务端不信任客户端给出的任何文本，避免把任意内容写进脚本目录。
+ * 写入后不会自动重载数据包，由玩家点界面上的「重载」按钮触发 {@code /reload}。</p>
  */
 public final class RecipeWriteService {
     private static final Logger LOGGER = LoggerFactory.getLogger("kubejs-recipe-gui");
@@ -35,6 +37,13 @@ public final class RecipeWriteService {
             return;
         }
         context.enqueueWork(() -> write(payload.data(), player));
+    }
+
+    public static void handleReload(ReloadScriptsPayload payload, IPayloadContext context) {
+        if (!(context.player() instanceof ServerPlayer player)) {
+            return;
+        }
+        context.enqueueWork(() -> reload(player));
     }
 
     private static void write(String data, ServerPlayer player) {
@@ -96,12 +105,27 @@ public final class RecipeWriteService {
                     : "gui.kubejs_recipe_gui.msg.replaced";
             player.sendSystemMessage(Component.translatable(key, id, ScriptStore.RELATIVE_PATH)
                     .withStyle(ChatFormatting.GREEN));
-            reload(server);
         } catch (IOException exception) {
             LOGGER.error("写入脚本 {} 失败", file, exception);
             player.sendSystemMessage(Component.translatable("gui.kubejs_recipe_gui.msg.failed", exception.getMessage())
                     .withStyle(ChatFormatting.RED));
         }
+    }
+
+    /** 手动重载：KubeJS 在资源重载时重新执行脚本，写完点一次才会生效。 */
+    private static void reload(ServerPlayer player) {
+        MinecraftServer server = player.getServer();
+        if (server == null) {
+            return;
+        }
+        if (!canWrite(server, player)) {
+            player.sendSystemMessage(Component.translatable("gui.kubejs_recipe_gui.msg.no_permission")
+                    .withStyle(ChatFormatting.RED));
+            return;
+        }
+        server.getCommands().performPrefixedCommand(server.createCommandSourceStack(), "reload");
+        player.sendSystemMessage(Component.translatable("gui.kubejs_recipe_gui.msg.reloaded")
+                .withStyle(ChatFormatting.GREEN));
     }
 
     /** 只有单人房主与服务端管理员可以落盘。 */
@@ -112,10 +136,5 @@ public final class RecipeWriteService {
     /** 元数据注释里不允许出现换行，否则会把脚本结构拆坏。 */
     private static String sanitize(String value) {
         return value == null ? "" : value.replace('\n', ' ').replace('\r', ' ');
-    }
-
-    /** KubeJS 在资源重载时重新执行脚本，因此写完立刻 /reload 就能生效。 */
-    private static void reload(MinecraftServer server) {
-        server.getCommands().performPrefixedCommand(server.createCommandSourceStack(), "reload");
     }
 }

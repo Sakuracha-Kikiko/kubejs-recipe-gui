@@ -8,7 +8,7 @@ import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 
 /**
- * 注册客户端到服务端的写入请求通道。
+ * 注册客户端到服务端的写入与重载请求通道。
  */
 @EventBusSubscriber(modid = KubejsRecipeGui.MOD_ID)
 public final class ModNetwork {
@@ -19,5 +19,7 @@ public final class ModNetwork {
     public static void register(RegisterPayloadHandlersEvent event) {
         PayloadRegistrar registrar = event.registrar("1");
         registrar.playToServer(WriteScriptPayload.TYPE, WriteScriptPayload.STREAM_CODEC, RecipeWriteService::handle);
+        registrar.playToServer(ReloadScriptsPayload.TYPE, ReloadScriptsPayload.STREAM_CODEC,
+                RecipeWriteService::handleReload);
     }
 }
