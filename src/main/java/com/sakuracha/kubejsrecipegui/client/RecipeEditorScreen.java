@@ -13,8 +13,10 @@ import com.sakuracha.kubejsrecipegui.spec.RecipeDraft;
 import com.sakuracha.kubejsrecipegui.spec.Workstation;
 import com.sakuracha.kubejsrecipegui.spec.WriteMode;
 import java.util.ArrayList;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 import net.minecraft.client.gui.GuiGraphics;
@@ -79,10 +81,11 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
 
     private final RecipeDraft draft = RecipeDraft.of(Workstation.CRAFTING);
     private final List<EditBox> boxes = new ArrayList<>();
+    private final Map<EditBox, int[]> boxRects = new IdentityHashMap<>();
 
     private int tab = TAB_PROPERTIES;
     /** {@code -1} 表示产出格，{@code >= 0} 表示第几个原料格。 */
-    private int selected = 0;
+    private int selected = -1;
     private boolean syncing;
     private int previewScroll;
 
@@ -167,6 +170,7 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         this.drawStationColumn(graphics, localX, localY);
         this.drawRecipeArea(graphics, localX, localY);
         this.drawSidePanel(graphics, localX, localY);
+        this.drawFieldBackgrounds(graphics);
         if (this.pickerOpen) {
             this.drawPicker(graphics, localX, localY);
         }
@@ -195,6 +199,7 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
 
     private EditBox createBox(int width, int maxLength, Consumer<String> responder, Predicate<String> filter) {
         EditBox box = new EditBox(this.font, 0, 0, width, 12, Component.empty());
+        box.setBordered(false);
         box.setMaxLength(maxLength);
         if (filter != null) {
             box.setFilter(filter);
@@ -265,7 +270,22 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         this.setValue(this.deleteValueBox, this.draft.deleteValue);
     }
 
+    /** 输入框底色画在缩放层，和控件本身（不缩放）对齐。 */
+    private void drawFieldBackgrounds(GuiGraphics graphics) {
+        for (EditBox box : this.boxes) {
+            int[] rect = this.boxRects.get(box);
+            if (rect == null || !box.visible) {
+                continue;
+            }
+            graphics.fill(rect[0] - 3, rect[1] - 1, rect[0] + rect[2] + 3, rect[1] + 13,
+                    box.isFocused() ? COLOR_PANEL_ALT : COLOR_SLOT);
+            graphics.renderOutline(rect[0] - 3, rect[1] - 1, rect[2] + 6, 14,
+                    box.isFocused() ? COLOR_ACCENT : COLOR_LINE);
+        }
+    }
+
     private void place(EditBox box, int logicalX, int logicalY, int logicalWidth) {
+        this.boxRects.put(box, new int[]{logicalX, logicalY, logicalWidth});
         box.setX(Math.round(this.originX + logicalX * this.zoom));
         box.setY(Math.round(this.originY + logicalY * this.zoom));
         box.setWidth(Math.max(20, Math.round(logicalWidth * this.zoom)));
@@ -390,11 +410,11 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         }
 
         if (this.tab == TAB_PROPERTIES) {
-            if (inside(RIGHT_X + 6, 186, FIELD_W, 16, localX, localY)) {
+            if (inside(RIGHT_X + 6, 172, FIELD_W, 16, localX, localY)) {
                 this.openPicker(this.selected);
                 return true;
             }
-            if (inside(RIGHT_X + 6, 206, FIELD_W, 16, localX, localY)) {
+            if (inside(RIGHT_X + 6, 192, FIELD_W, 16, localX, localY)) {
                 this.clearSelected();
                 return true;
             }
@@ -722,6 +742,12 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
             graphics.renderItemDecorations(this.font, shown, outX + 6, outY + 6);
         }
 
+        // 输出槽下方直接显示将写入的配方 ID，省得切到生成页确认。
+        int gridBottom = this.slotY(station.slotCount() - 1) + SLOT;
+        String pendingId = RecipeCode.resolveId(this.draft);
+        graphics.drawString(this.font, this.font.plainSubstrByWidth(pendingId, MID_W - 16),
+                MID_X + 8, gridBottom + 10, COLOR_ACCENT, false);
+
         String slotHint = this.font.plainSubstrByWidth(
                 Component.translatable("gui.kubejs_recipe_gui.hint.slot").getString(), MID_W - 10);
         graphics.drawString(this.font, slotHint, MID_X + 5, H - 15, COLOR_MUTED, false);
@@ -794,15 +820,16 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
             label(graphics, "gui.kubejs_recipe_gui.label.components", RIGHT_X + 6, 131);
         }
 
-        this.drawButton(graphics, RIGHT_X + 6, 186, FIELD_W, 16,
+        this.drawButton(graphics, RIGHT_X + 6, 172, FIELD_W, 16,
                 Component.translatable("gui.kubejs_recipe_gui.button.select_item"), mouseX, mouseY);
-        this.drawButton(graphics, RIGHT_X + 6, 206, FIELD_W, 16,
+        this.drawButton(graphics, RIGHT_X + 6, 192, FIELD_W, 16,
                 Component.translatable("gui.kubejs_recipe_gui.button.clear"), mouseX, mouseY);
     }
 
     private void drawGenerate(GuiGraphics graphics, int mouseX, int mouseY) {
         label(graphics, "gui.kubejs_recipe_gui.label.recipe_id", RIGHT_X + 6, 37);
-        graphics.drawString(this.font, Component.translatable("gui.kubejs_recipe_gui.hint.recipe_id").getString(),
+        graphics.drawString(this.font, this.font.plainSubstrByWidth(
+                Component.translatable("gui.kubejs_recipe_gui.hint.recipe_id").getString(), FIELD_W),
                 RIGHT_X + 6, 66, COLOR_MUTED, false);
 
         label(graphics, "gui.kubejs_recipe_gui.label.write_mode", RIGHT_X + 6, 85);

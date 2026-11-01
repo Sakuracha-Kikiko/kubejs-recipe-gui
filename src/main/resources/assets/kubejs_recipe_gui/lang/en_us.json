@@ -11,9 +11,9 @@
   "gui.kubejs_recipe_gui.station.stonecutting": "Stonecutter",
   "gui.kubejs_recipe_gui.station.smithing": "Smithing Table",
 
-  "gui.kubejs_recipe_gui.tab.properties": "Properties",
-  "gui.kubejs_recipe_gui.tab.generate": "Generate",
-  "gui.kubejs_recipe_gui.tab.preview": "Preview",
+  "gui.kubejs_recipe_gui.tab.properties": "Recipe",
+  "gui.kubejs_recipe_gui.tab.generate": "Script",
+  "gui.kubejs_recipe_gui.tab.preview": "Code",
 
   "gui.kubejs_recipe_gui.label.station": "Workstation",
   "gui.kubejs_recipe_gui.label.ingredient": "Ingredient",
@@ -56,7 +56,7 @@
   "gui.kubejs_recipe_gui.picker.empty": "No matching item",
   "gui.kubejs_recipe_gui.picker.page": "%s / %s",
 
-  "gui.kubejs_recipe_gui.hint.slot": "Left click to select, right click to clear",
+  "gui.kubejs_recipe_gui.hint.slot": "LMB select, RMB clear",
   "gui.kubejs_recipe_gui.hint.recipe_id": "Leave empty for an automatic ID",
 
   "gui.kubejs_recipe_gui.error.output_empty": "Output item is required",
