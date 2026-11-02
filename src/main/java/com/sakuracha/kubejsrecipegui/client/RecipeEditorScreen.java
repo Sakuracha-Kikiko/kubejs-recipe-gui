@@ -180,6 +180,14 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
             renderable.render(graphics, mouseX, mouseY, partialTick);
         }
 
+        if (this.pickerOpen) {
+            // 浮层背景抬到了 z=200，搜索框要再抬一层才会显示在浮层之上。
+            graphics.pose().pushPose();
+            graphics.pose().translate(0.0F, 0.0F, 400.0F);
+            this.pickerSearch.render(graphics, mouseX, mouseY, partialTick);
+            graphics.pose().popPose();
+        }
+
         if (!this.pickerOpen) {
             ItemStack hovered = this.hoveredStack(localX, localY);
             if (!hovered.isEmpty()) {
@@ -232,7 +240,7 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         }
 
         if (this.pickerOpen) {
-            this.place(this.pickerSearch, this.pickerX() + 6, this.pickerY() + 30, PICKER_W - 12);
+            this.place(this.pickerSearch, this.pickerX() + 10, this.pickerY() + 32, PICKER_W - 20);
             this.visible(this.pickerSearch, true);
             this.setFocused(this.pickerSearch);
             return;
@@ -272,6 +280,10 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
 
     /** 输入框底色画在缩放层，和控件本身（不缩放）对齐。 */
     private void drawFieldBackgrounds(GuiGraphics graphics) {
+        if (this.pickerOpen) {
+            // 浮层里的搜索框底色由 drawPickerContent 画在浮层同一层上，这里跳过。
+            return;
+        }
         for (EditBox box : this.boxes) {
             int[] rect = this.boxRects.get(box);
             if (rect == null || !box.visible) {
@@ -892,6 +904,14 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
     }
 
     private void drawPicker(GuiGraphics graphics, int mouseX, int mouseY) {
+        // 物品图标由 renderItem 固定画在 z=100 上，所以浮层背景必须抬到更高层才能盖住它们。
+        graphics.pose().pushPose();
+        graphics.pose().translate(0.0F, 0.0F, 200.0F);
+        this.drawPickerContent(graphics, mouseX, mouseY);
+        graphics.pose().popPose();
+    }
+
+    private void drawPickerContent(GuiGraphics graphics, int mouseX, int mouseY) {
         graphics.fill(0, 0, W, H, 0xB0000000);
         int x = this.pickerX();
         int y = this.pickerY();
@@ -899,6 +919,18 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         graphics.renderOutline(x, y, PICKER_W, PICKER_H, COLOR_ACCENT);
         graphics.drawString(this.font, Component.translatable("gui.kubejs_recipe_gui.picker.title"),
                 x + 6, y + 10, COLOR_TEXT, false);
+
+        int searchX = x + 6;
+        int searchY = y + 28;
+        int searchW = PICKER_W - 12;
+        graphics.fill(searchX, searchY, searchX + searchW, searchY + 16,
+                this.pickerSearch.isFocused() ? COLOR_PANEL_ALT : COLOR_SLOT);
+        graphics.renderOutline(searchX, searchY, searchW, 16,
+                this.pickerSearch.isFocused() ? COLOR_ACCENT : COLOR_LINE);
+        if (this.pickerSearch.getValue().isEmpty()) {
+            graphics.drawString(this.font, Component.translatable("gui.kubejs_recipe_gui.picker.search"),
+                    searchX + 4, searchY + 4, COLOR_MUTED, false);
+        }
 
         int pages = Math.max(1, (this.pickerMatches.size() + PICKER_PAGE - 1) / PICKER_PAGE);
         String page = Component.translatable("gui.kubejs_recipe_gui.picker.page",
@@ -912,7 +944,7 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         }
 
         int gridX = x + 8;
-        int gridY = y + 44;
+        int gridY = y + 54;
         for (int row = 0; row < PICKER_ROWS; row++) {
             for (int column = 0; column < PICKER_COLUMNS; column++) {
                 int index = this.pickerPage * PICKER_PAGE + row * PICKER_COLUMNS + column;

@@ -79,5 +79,6 @@
   "gui.kubejs_recipe_gui.msg.failed": "Could not write recipe: %s",
   "gui.kubejs_recipe_gui.msg.invalid": "Recipe is invalid: %s",
   "gui.kubejs_recipe_gui.msg.reloading": "Reload request sent",
-  "gui.kubejs_recipe_gui.msg.reloaded": "Recipes reloaded"
+  "gui.kubejs_recipe_gui.msg.reloaded": "Recipes reloaded",
+  "gui.kubejs_recipe_gui.msg.sent": "Request sent: %s"
 }

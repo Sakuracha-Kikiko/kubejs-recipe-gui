@@ -65,10 +65,9 @@ configurations {
 }
 
 dependencies {
-    // KubeJS 只作为运行期前置（模组本身只写脚本，不引用它的类），开发环境里需要它来验证生成结果。
-    compileOnly "dev.latvian.mods:kubejs-neoforge:${kubejs_version}"
-    // 开发环境跑 runServer / runClient 时需要 KubeJS 本体。若离线解析不了它的传递依赖，
-    // 可以注释掉这行，改为把 KubeJS、Rhino 等 jar 直接放进 run/mods/（FML 会扫描该目录）。
+    // 本模组不引用 KubeJS 的类（只负责生成脚本），所以不需要 compileOnly；
+    // 但跑 runServer / runClient 验证生成结果时需要 KubeJS 本体。
+    // 离线环境解析不了它的传递依赖时，可以注释掉这行，改为把 KubeJS、Rhino 等 jar 放进 run/mods/。
     localRuntime "dev.latvian.mods:kubejs-neoforge:${kubejs_version}"
 
     testImplementation platform('org.junit:junit-bom:5.10.2')

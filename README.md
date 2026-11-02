@@ -7,7 +7,7 @@ A NeoForge mod that adds an intuitive GUI to easily edit KubeJS recipes.
 不需要手写 JS，也不需要退出游戏。
 
 - Minecraft 1.21.1 / NeoForge 21.1.216+ / Java 21
-- 前置：KubeJS 2101.7+（JEI 可选，用于以后的配方导入）
+- 前置：KubeJS 2101.7+（开发与测试使用 2101.7.2-build.381；JEI 可选，用于以后的配方导入）
 - 行为约定见 [docs/SPEC.md](docs/SPEC.md)
 
 ## 截图
@@ -25,11 +25,12 @@ M1 已完成：方块与界面骨架、原版 7 类配方（有序/无序合成�
 
 M1 已验证：
 
-- `gradle build` 通过，产物 `build/libs/kubejs_recipe_gui-0.1.0.jar`；
+- `gradle build` 通过，产物 `build/libs/kubejs_recipe_gui-0.1.3.jar`；
 - `RecipeCode` / `ScriptStore` 的 22 个单元测试全部通过；
 - 用生成的脚本启动开发服务器，KubeJS 日志为
   `Loaded script server_scripts:generated_recipes.js ... with 0 errors` 与
-  `Added 4 recipes, removed 0 recipes ... with 0 failed recipes`。
+  `Added 4 recipes, removed 0 recipes ... with 0 failed recipes`；
+- KubeJS `2101.7.2-build.381`（当前 1.21.1 分支最新构建）上重跑同一份脚本，日志一致，`0 failed recipes`。
 
 2026-11-01 界面调整（根据实机反馈）：
 
@@ -38,6 +39,12 @@ M1 已验证：
 - 输入框获得焦点时按 E 只输入字符，不再关闭界面（退出统一用 ESC）；
 - 写入脚本后不再自动 `/reload`，改由「重载」按钮手动触发，避免写完立刻重载造成的卡顿与误操作；
 - 输入框改成深色描边样式；配方 ID 直接显示在输出槽下方；标签页与提示文本按面板宽度裁剪，不再溢出。
+
+2026-11-02 选择物品浮层修复：
+
+- 物品图标在 GUI 里固定画在 z=100，浮层背景原本在 z=0，导致图标浮在浮层之上；
+  现在浮层整体抬到 z=200、浮层里的图标在 z=300、搜索框在 z=400，遮挡关系正确；
+- 浮层里补上搜索框的底色与边框，并显示占位提示，网格整体下移不再压住输入框。
 
 ## 构建
 
