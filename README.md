@@ -16,6 +16,8 @@ A NeoForge mod that adds an intuitive GUI to easily edit KubeJS recipes.
 
 ![生成页](docs/ui-generate.png)
 
+![选择物品](docs/ui-picker.png)
+
 （截图来自开发服务器，右上角的聊天提示是离线测试服的系统提示，不是界面本身。）
 
 ## 当前进度
