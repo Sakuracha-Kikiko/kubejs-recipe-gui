@@ -31,3 +31,6 @@ build/
 # 开发运行目录（世界、日志、放进 run/mods 的前置）
 run/
 dev-libs/
+
+# 更新计划
+PLAN.md

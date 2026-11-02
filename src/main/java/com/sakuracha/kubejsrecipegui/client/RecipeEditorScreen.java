@@ -28,22 +28,32 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.inventory.ClickType;
+import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.network.PacketDistributor;
 
 /**
  * 配方编辑界面：左栏选工作站，中栏摆原料与产出，右栏三个标签页负责属性、生成与预览。
  *
- * <p>界面尺寸按原版 GUI 缩放设计：整块面板 470×250，在 GUI 缩放 3（640×360）下约占屏幕四分之三，
- * 缩放 4（480×270）也能完整显示；屏幕更小时按比例整体收缩。</p>
+ * <p>界面尺寸按原版 GUI 缩放设计：整块面板 470×308（上方编辑器 470×212，下方玩家背包），
+ * 在 GUI 缩放 3（640×360）下仍能完整显示；屏幕更小时按比例整体收缩。</p>
  */
 public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu> {
     private static final int W = 470;
-    private static final int H = 250;
+    private static final int H = 308;
 
     private static final int HEADER_H = 18;
     private static final int BODY_TOP = 22;
-    private static final int BODY_BOTTOM = H - 6;
+    private static final int BODY_BOTTOM = 212;
+
+    /** 底部玩家背包：主背包 3×9 加快捷栏，格子按原版 18 像素。 */
+    private static final int INV_TOP = 216;
+    private static final int INV_BOTTOM = H - 6;
+    private static final int INV_SLOT = 18;
+    private static final int INV_X = (W - 9 * INV_SLOT) / 2;
+    private static final int INV_MAIN_Y = 224;
+    private static final int INV_HOTBAR_Y = 282;
 
     private static final int LEFT_X = 5;
     private static final int LEFT_W = 104;
@@ -170,6 +180,7 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         this.drawStationColumn(graphics, localX, localY);
         this.drawRecipeArea(graphics, localX, localY);
         this.drawSidePanel(graphics, localX, localY);
+        this.drawInventory(graphics, localX, localY);
         this.drawFieldBackgrounds(graphics);
         if (this.pickerOpen) {
             this.drawPicker(graphics, localX, localY);
@@ -185,6 +196,15 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
             graphics.pose().pushPose();
             graphics.pose().translate(0.0F, 0.0F, 400.0F);
             this.pickerSearch.render(graphics, mouseX, mouseY, partialTick);
+            graphics.pose().popPose();
+        }
+
+        ItemStack carried = this.menu.getCarried();
+        if (!carried.isEmpty()) {
+            graphics.pose().pushPose();
+            graphics.pose().translate(0.0F, 0.0F, 500.0F);
+            graphics.renderItem(carried, mouseX - 8, mouseY - 8);
+            graphics.renderItemDecorations(this.font, carried, mouseX - 8, mouseY - 8);
             graphics.pose().popPose();
         }
 
@@ -254,7 +274,7 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         this.place(this.tagBox, rx, 142, FIELD_W);
         this.place(this.componentsBox, rx, 142, FIELD_W);
         this.place(this.idBox, rx, 48, FIELD_W);
-        this.place(this.deleteValueBox, rx, 166, FIELD_W);
+        this.place(this.deleteValueBox, rx, 164, FIELD_W);
 
         if (properties) {
             this.visible(this.countBox, outputSelected);
@@ -387,6 +407,20 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
 
         this.setFocused((GuiEventListener) null);
 
+        Slot inventorySlot = this.inventorySlotAt(localX, localY);
+        if (inventorySlot != null) {
+            if (hasShiftDown()) {
+                this.pickFromInventory(inventorySlot);
+            } else if (this.minecraft != null && this.minecraft.gameMode != null) {
+                this.slotClicked(inventorySlot, inventorySlot.index, button, ClickType.PICKUP);
+            }
+            return true;
+        }
+        if (localY >= INV_TOP && localY < INV_BOTTOM) {
+            // 点到背包面板的空白处：吞掉事件，别让父类关掉界面。
+            return true;
+        }
+
         if (this.tabHit(localX, localY) >= 0) {
             this.tab = this.tabHit(localX, localY);
             this.layout();
@@ -395,7 +429,7 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
 
         Workstation[] stations = Workstation.values();
         for (int index = 0; index < stations.length; index++) {
-            if (inside(LEFT_X + 4, this.stationY(index), LEFT_W - 8, 20, localX, localY)) {
+            if (inside(LEFT_X + 4, this.stationY(index), LEFT_W - 8, 19, localX, localY)) {
                 this.selectStation(stations[index]);
                 return true;
             }
@@ -422,35 +456,35 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         }
 
         if (this.tab == TAB_PROPERTIES) {
-            if (inside(RIGHT_X + 6, 172, FIELD_W, 16, localX, localY)) {
+            if (inside(RIGHT_X + 6, 166, FIELD_W, 16, localX, localY)) {
                 this.openPicker(this.selected);
                 return true;
             }
-            if (inside(RIGHT_X + 6, 192, FIELD_W, 16, localX, localY)) {
+            if (inside(RIGHT_X + 6, 186, FIELD_W, 16, localX, localY)) {
                 this.clearSelected();
                 return true;
             }
         }
 
         if (this.tab == TAB_GENERATE) {
-            if (inside(RIGHT_X + 6, 98, 66, 16, localX, localY)) {
+            if (inside(RIGHT_X + 6, 96, 66, 16, localX, localY)) {
                 this.draft.writeMode = WriteMode.REPLACE;
                 return true;
             }
-            if (inside(RIGHT_X + 78, 98, 66, 16, localX, localY)) {
+            if (inside(RIGHT_X + 78, 96, 66, 16, localX, localY)) {
                 this.draft.writeMode = WriteMode.SKIP;
                 return true;
             }
-            if (inside(RIGHT_X + 6, 132, FIELD_W, 16, localX, localY)) {
+            if (inside(RIGHT_X + 6, 130, FIELD_W, 16, localX, localY)) {
                 this.draft.deleteMode = this.draft.deleteMode.next();
                 this.layout();
                 return true;
             }
-            if (inside(RIGHT_X + 6, 204, 92, 18, localX, localY)) {
+            if (inside(RIGHT_X + 6, 186, 92, 18, localX, localY)) {
                 this.writeScript();
                 return true;
             }
-            if (inside(RIGHT_X + 102, 204, 42, 18, localX, localY)) {
+            if (inside(RIGHT_X + 102, 186, 42, 18, localX, localY)) {
                 this.reloadScripts();
                 return true;
             }
@@ -552,16 +586,35 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
             this.layout();
             return;
         }
-        ResourceLocation id = BuiltInRegistries.ITEM.getKey(carried.getItem());
+        this.applyStack(carried, index);
+    }
+
+    /** 把物品写进某个引用格：{@code index < 0} 表示产出格，否则是第几个原料格。 */
+    private void applyStack(ItemStack stack, int index) {
+        ResourceLocation id = BuiltInRegistries.ITEM.getKey(stack.getItem());
         if (index < 0) {
             this.draft.output.itemId = id.toString();
-            this.draft.output.count = Math.max(1, carried.getCount());
+            this.draft.output.count = Math.max(1, stack.getCount());
         } else {
             IngredientSpec spec = this.draft.input(index);
             spec.itemId = id.toString();
             spec.tagId = "";
         }
         this.layout();
+    }
+
+    /** Shift 点击背包：不搬走物品，只把这一格的东西抄进当前选中的引用格。 */
+    private void pickFromInventory(Slot slot) {
+        ItemStack stack = slot.getItem();
+        if (stack.isEmpty()) {
+            return;
+        }
+        int target = this.selected;
+        if (target >= this.draft.station.slotCount()) {
+            target = -1;
+        }
+        this.selected = target;
+        this.applyStack(stack, target);
     }
 
     private void clearSelected() {
@@ -695,7 +748,7 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
     }
 
     private int stationY(int index) {
-        return BODY_TOP + 12 + index * 24;
+        return BODY_TOP + 12 + index * 22;
     }
 
     private void drawStationColumn(GuiGraphics graphics, int mouseX, int mouseY) {
@@ -708,9 +761,9 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
             int x = LEFT_X + 4;
             int y = this.stationY(index);
             boolean active = this.draft.station == station;
-            boolean hovered = inside(x, y, LEFT_W - 8, 20, mouseX, mouseY);
-            graphics.fill(x, y, x + LEFT_W - 8, y + 20, active ? COLOR_PANEL_ALT : COLOR_PANEL);
-            graphics.renderOutline(x, y, LEFT_W - 8, 20, active ? COLOR_ACCENT : (hovered ? COLOR_LINE : COLOR_LINE_SOFT));
+            boolean hovered = inside(x, y, LEFT_W - 8, 19, mouseX, mouseY);
+            graphics.fill(x, y, x + LEFT_W - 8, y + 19, active ? COLOR_PANEL_ALT : COLOR_PANEL);
+            graphics.renderOutline(x, y, LEFT_W - 8, 19, active ? COLOR_ACCENT : (hovered ? COLOR_LINE : COLOR_LINE_SOFT));
             graphics.drawString(this.font, Component.translatable(station.langKey()), x + 5, y + 6,
                     active ? COLOR_TEXT : COLOR_MUTED, false);
         }
@@ -758,11 +811,11 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         int gridBottom = this.slotY(station.slotCount() - 1) + SLOT;
         String pendingId = RecipeCode.resolveId(this.draft);
         graphics.drawString(this.font, this.font.plainSubstrByWidth(pendingId, MID_W - 16),
-                MID_X + 8, gridBottom + 10, COLOR_ACCENT, false);
+                MID_X + 8, gridBottom + 8, COLOR_ACCENT, false);
 
         String slotHint = this.font.plainSubstrByWidth(
                 Component.translatable("gui.kubejs_recipe_gui.hint.slot").getString(), MID_W - 10);
-        graphics.drawString(this.font, slotHint, MID_X + 5, H - 15, COLOR_MUTED, false);
+        graphics.drawString(this.font, slotHint, MID_X + 5, BODY_BOTTOM - 12, COLOR_MUTED, false);
     }
 
     private void drawSlot(GuiGraphics graphics, int x, int y, int mouseX, int mouseY,
@@ -832,9 +885,9 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
             label(graphics, "gui.kubejs_recipe_gui.label.components", RIGHT_X + 6, 131);
         }
 
-        this.drawButton(graphics, RIGHT_X + 6, 172, FIELD_W, 16,
+        this.drawButton(graphics, RIGHT_X + 6, 166, FIELD_W, 16,
                 Component.translatable("gui.kubejs_recipe_gui.button.select_item"), mouseX, mouseY);
-        this.drawButton(graphics, RIGHT_X + 6, 192, FIELD_W, 16,
+        this.drawButton(graphics, RIGHT_X + 6, 186, FIELD_W, 16,
                 Component.translatable("gui.kubejs_recipe_gui.button.clear"), mouseX, mouseY);
     }
 
@@ -845,15 +898,15 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
                 RIGHT_X + 6, 66, COLOR_MUTED, false);
 
         label(graphics, "gui.kubejs_recipe_gui.label.write_mode", RIGHT_X + 6, 85);
-        this.drawButton(graphics, RIGHT_X + 6, 98, 66, 16,
+        this.drawButton(graphics, RIGHT_X + 6, 96, 66, 16,
                 Component.translatable("gui.kubejs_recipe_gui.button.overwrite"), mouseX, mouseY,
                 this.draft.writeMode == WriteMode.REPLACE);
-        this.drawButton(graphics, RIGHT_X + 78, 98, 66, 16,
+        this.drawButton(graphics, RIGHT_X + 78, 96, 66, 16,
                 Component.translatable("gui.kubejs_recipe_gui.button.skip"), mouseX, mouseY,
                 this.draft.writeMode == WriteMode.SKIP);
 
         label(graphics, "gui.kubejs_recipe_gui.label.delete", RIGHT_X + 6, 121);
-        this.drawButton(graphics, RIGHT_X + 6, 132, FIELD_W, 16,
+        this.drawButton(graphics, RIGHT_X + 6, 130, FIELD_W, 16,
                 Component.translatable(this.draft.deleteMode.langKey()), mouseX, mouseY);
 
         if (this.draft.deleteMode.needsValue()) {
@@ -863,12 +916,12 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         if (this.statusKey != null) {
             String text = Component.translatable(this.statusKey, this.statusArgs).getString();
             graphics.drawString(this.font, this.font.plainSubstrByWidth(text, RIGHT_W - 12),
-                    RIGHT_X + 6, 188, this.statusGood ? COLOR_GOOD : COLOR_BAD, false);
+                    RIGHT_X + 6, 172, this.statusGood ? COLOR_GOOD : COLOR_BAD, false);
         }
 
-        this.drawButton(graphics, RIGHT_X + 6, 204, 92, 18,
+        this.drawButton(graphics, RIGHT_X + 6, 186, 92, 18,
                 Component.translatable("gui.kubejs_recipe_gui.button.write"), mouseX, mouseY);
-        this.drawButton(graphics, RIGHT_X + 102, 204, 42, 18,
+        this.drawButton(graphics, RIGHT_X + 102, 186, 42, 18,
                 Component.translatable("gui.kubejs_recipe_gui.button.reload"), mouseX, mouseY);
     }
 
@@ -901,6 +954,49 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
 
         int scrollable = Math.max(0, lines.length - maxLines);
         this.previewScroll = Math.min(this.previewScroll, scrollable);
+    }
+
+    private void drawInventory(GuiGraphics graphics, int mouseX, int mouseY) {
+        panel(graphics, 5, INV_TOP, W - 10, INV_BOTTOM - INV_TOP);
+        String hint = this.font.plainSubstrByWidth(
+                Component.translatable("gui.kubejs_recipe_gui.hint.inventory").getString(),
+                INV_X - 14);
+        graphics.drawString(this.font, hint, 11, INV_MAIN_Y + 24, COLOR_MUTED, false);
+        for (Slot slot : this.menu.slots) {
+            int x = this.inventorySlotX(slot);
+            int y = this.inventorySlotY(slot);
+            boolean hovered = inside(x, y, INV_SLOT, INV_SLOT, mouseX, mouseY);
+            graphics.fill(x, y, x + INV_SLOT, y + INV_SLOT, COLOR_SLOT);
+            graphics.renderOutline(x, y, INV_SLOT, INV_SLOT, hovered ? COLOR_ACCENT : COLOR_LINE_SOFT);
+            ItemStack stack = slot.getItem();
+            if (!stack.isEmpty()) {
+                graphics.renderItem(stack, x + 1, y + 1);
+                graphics.renderItemDecorations(this.font, stack, x + 1, y + 1);
+            }
+        }
+    }
+
+    private int inventorySlotX(Slot slot) {
+        int index = slot.getContainerSlot();
+        int column = index < 9 ? index : (index - 9) % 9;
+        return INV_X + column * INV_SLOT;
+    }
+
+    private int inventorySlotY(Slot slot) {
+        int index = slot.getContainerSlot();
+        return index < 9 ? INV_HOTBAR_Y : INV_MAIN_Y + ((index - 9) / 9) * INV_SLOT;
+    }
+
+    private Slot inventorySlotAt(int localX, int localY) {
+        if (localY < INV_TOP || localY >= INV_BOTTOM) {
+            return null;
+        }
+        for (Slot slot : this.menu.slots) {
+            if (inside(this.inventorySlotX(slot), this.inventorySlotY(slot), INV_SLOT, INV_SLOT, localX, localY)) {
+                return slot;
+            }
+        }
+        return null;
     }
 
     private void drawPicker(GuiGraphics graphics, int mouseX, int mouseY) {
@@ -1012,12 +1108,12 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
     private int slotY(int index) {
         Workstation station = this.draft.station;
         if (station.isCrafting()) {
-            return BODY_TOP + 26 + (index / 3) * 32;
+            return BODY_TOP + 24 + (index / 3) * 32;
         }
         if (station.isSmithing()) {
-            return BODY_TOP + 44;
+            return BODY_TOP + 54;
         }
-        return BODY_TOP + 36;
+        return BODY_TOP + 50;
     }
 
     private int outputX() {
@@ -1032,12 +1128,12 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
 
     private int outputY() {
         if (this.draft.station.isCrafting()) {
-            return BODY_TOP + 58;
+            return BODY_TOP + 56;
         }
         if (this.draft.station.isSmithing()) {
-            return BODY_TOP + 44;
+            return BODY_TOP + 54;
         }
-        return BODY_TOP + 36;
+        return BODY_TOP + 50;
     }
 
     private ItemStack hoveredStack(int mouseX, int mouseY) {
@@ -1050,7 +1146,8 @@ public class RecipeEditorScreen extends AbstractContainerScreen<RecipeEditorMenu
         if (inside(this.outputX(), this.outputY(), SLOT, SLOT, mouseX, mouseY)) {
             return ItemIndex.stack(this.draft.output.itemId);
         }
-        return ItemStack.EMPTY;
+        Slot slot = this.inventorySlotAt(mouseX, mouseY);
+        return slot == null ? ItemStack.EMPTY : slot.getItem();
     }
 
     private String previewText() {

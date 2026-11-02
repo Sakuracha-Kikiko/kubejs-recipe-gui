@@ -18,6 +18,8 @@ A NeoForge mod that adds an intuitive GUI to easily edit KubeJS recipes.
 
 ![选择物品](docs/ui-picker.png)
 
+![背包](docs/ui-inventory.png)
+
 （截图来自开发服务器，右上角的聊天提示是离线测试服的系统提示，不是界面本身。）
 
 ## 当前进度
@@ -27,7 +29,7 @@ M1 已完成：方块与界面骨架、原版 7 类配方（有序/无序合成�
 
 M1 已验证：
 
-- `gradle build` 通过，产物 `build/libs/kubejs_recipe_gui-0.1.3.jar`；
+- `gradle build` 通过，产物 `build/libs/kubejs_recipe_gui-0.2.0.jar`；
 - `RecipeCode` / `ScriptStore` 的 22 个单元测试全部通过；
 - 用生成的脚本启动开发服务器，KubeJS 日志为
   `Loaded script server_scripts:generated_recipes.js ... with 0 errors` 与
@@ -41,6 +43,14 @@ M1 已验证：
 - 输入框获得焦点时按 E 只输入字符，不再关闭界面（退出统一用 ESC）；
 - 写入脚本后不再自动 `/reload`，改由「重载」按钮手动触发，避免写完立刻重载造成的卡顿与误操作；
 - 输入框改成深色描边样式；配方 ID 直接显示在输出槽下方；标签页与提示文本按面板宽度裁剪，不再溢出。
+
+2026-11-02 界面继续缩小并加入玩家背包（0.2.0）：
+
+- 编辑器面板从 470×250 压到 470×190（工作站按钮、配方区、属性页整体上移），下方接一条
+  玩家背包（3×9 主背包 + 快捷栏，走原版 `Slot` 与 `AbstractContainerMenu`）；
+- 背包里的物品用原版规则搬运：左键拿起/放下、右键单个、Shift+点击直接把该格物品复制进
+  当前选中的原料格或产出格（复制，不消耗背包物品）；
+- 界面尺寸从 470×250 变成 470×308，但因为编辑器本体变矮，配方编辑部分比之前更紧凑。
 
 2026-11-02 选择物品浮层修复：
 
@@ -72,11 +82,11 @@ spec/      配方草稿、原料/产出、写入与删除策略（纯数据）
 codegen/   配方 JSON、脚本条目、ID 与校验（纯逻辑）
 server/    标记块合并、原子写入脚本文件
 network/   客户端 → 服务端的写入请求
-client/    配方编辑器界面（原版控件 + 自绘）
+client/    配方编辑器界面（原版控件 + 自绘，含底部玩家背包）
 ```
 
-游戏侧只有 `KubejsRecipeGui`、`ModContent`、`RecipeEditorBlock`、`RecipeEditorMenu`、
-`RecipeWriteService` 与界面几个类；其余都是可以直接单测的纯 Java。
+游戏侧只有 `KubejsRecipeGui`、`ModContent`、`RecipeEditorBlock`、`RecipeEditorMenu`（含 36 个
+玩家背包槽位）、`RecipeWriteService` 与界面几个类；其余都是可以直接单测的纯 Java。
 
 ## 生成结果长这样
 
